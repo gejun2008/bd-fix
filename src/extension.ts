@@ -1,11 +1,9 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
-import { Uri, workspace, WorkspaceEdit } from "vscode";
-// import shObject = require('./remove-devDependencies.sh')
+import { readFileSync, existsSync, writeFileSync } from "fs";
 
-// const file=require('fs');
-import { readFileSync, exists, writeFileSync } from "fs";
+import * as cp from "child_process";
 
 function getDevDependenciesStr() {
   let str = `#!/bin/bash 
@@ -51,6 +49,15 @@ function getDevDependenciesStr() {
   return str;
 }
 
+function register(
+  context: vscode.ExtensionContext,
+  callback: (...args: any[]) => any,
+  commandName: string
+) {
+  const disposable = vscode.commands.registerCommand(commandName, callback);
+  context.subscriptions.push(disposable);
+}
+
 function stringToUint8Array(str: string) {
   var arr = [];
   for (var i = 0, j = str.length; i < j; ++i) {
@@ -61,8 +68,18 @@ function stringToUint8Array(str: string) {
   return tmpUint8Array;
 }
 
-function copyShellFile() {
-  const wsEdit = new vscode.WorkspaceEdit();
+async function checkScriptFile() {
+  const rootPath = vscode.workspace.rootPath;
+  const isScriptFileExist = existsSync(
+    rootPath + "//script//remove-devDependencies.sh"
+  );
+  if (isScriptFileExist) {
+    return true;
+  }
+  return copyShellFile();
+}
+
+async function copyShellFile() {
   const spaceFolder = vscode.workspace.workspaceFolders;
   if (!spaceFolder) {
     vscode.window.showErrorMessage("Please open folder firstly");
@@ -74,84 +91,244 @@ function copyShellFile() {
   );
 
   const removeDepContent = getDevDependenciesStr();
-  vscode.workspace.fs.writeFile(filePath, stringToUint8Array(removeDepContent));
-  //   writeFileSync(filePath.toString(), removeDepContent);
-  return;
+  await vscode.workspace.fs.writeFile(
+    filePath,
+    stringToUint8Array(removeDepContent)
+  );
+  return true;
 }
 
-async function findJenkinsAndUpdate() {
+async function updateJenkins(jenkinsContent: string) {
   const rootPath = vscode.workspace.rootPath;
-  if (!rootPath) {
-    vscode.window.showErrorMessage("Please open a workspace");
+
+  // Setup done, return directly
+  if (jenkinsContent.includes("script/remove-devDependencies.sh")) {
     return false;
   }
 
-  const tsFileReader = readFileSync(rootPath + "\\JenkinsFile")
-    .toString("utf8")
-    .split("\n"); // consider jenkins file exist
+  const tsFileReader = jenkinsContent.split("\n"); // parse array from content
   let readFileWrite = "";
+
+  // if buildArtifactsFunc doesn't in file, insert at end of jenkins file
+  if (!jenkinsContent.includes("buildArtifactsFunc")) {
+    tsFileReader.forEach((lineContent) => {
+      if (lineContent.startsWith(")", 0)) {
+        const buildArtifactsStr = `
+          buildArtifactsFunc: {
+            sh '''npm install
+            npm run test --if-present
+            npm run build --if-present
+            chmod 777 ./script/remove-devDependencies.sh
+            ./script/remove-devDependencies.sh'''
+          }
+        )
+        `;
+        readFileWrite = readFileWrite + buildArtifactsStr;
+      } else {
+        readFileWrite += lineContent;
+      }
+    });
+    writeFileSync(rootPath + "\\JenkinsFile", readFileWrite);
+    return true;
+  }
+
+  // setup begin in Jenkins file
   let buildScriptFunc = 0;
   // read JenkinsFile
   tsFileReader.forEach((lineContent) => {
-    if (
-      lineContent.includes("script/remove-devDependencies.sh") &&
-      buildScriptFunc > 0
-    ) {
+    // buildArtifactsFunc end bracket add script text
+    if (buildScriptFunc == 1 && lineContent.includes("}")) {
+      let removeDepStr = `
+        sh ''' chmod 777 ./script/remove-devDependencies.sh
+        ./script/remove-devDependencies.sh'''
+      `;
+      readFileWrite += removeDepStr + '\n';
       buildScriptFunc--;
     }
+
+    // if jenkins file exist 'buildScriptFunc {'
     if (
       lineContent.includes("buildArtifactsFunc") &&
-      lineContent.includes("{")
+      lineContent.includes("{") &&
+      !lineContent.includes("}")
     ) {
       buildScriptFunc++;
-      readFileWrite += lineContent + " \n";
-    } else {
-      if (buildScriptFunc > 0 && lineContent.includes("}")) {
-        let addRemoveDevStr =
-          "\t\tsh ''' chmod 777 ./script/remove-devDependencies.sh \n";
-        addRemoveDevStr += "\t\t./script/remove-devDependencies.sh''' \n";
-        addRemoveDevStr += lineContent + " \n";
-        readFileWrite += addRemoveDevStr;
-        buildScriptFunc--;
-      } else {
-        readFileWrite += lineContent + " \n";
-      }
     }
+
+    if (buildScriptFunc > 0 && !lineContent.includes("buildArtifactsFunc")) {
+      lineContent.includes("{") ? buildScriptFunc++ : null;
+      lineContent.includes("}") ? buildScriptFunc-- : null;
+    }
+
+    readFileWrite += lineContent;
   });
 
   // write JenkinsFile
   writeFileSync(rootPath + "\\JenkinsFile", readFileWrite);
   return true;
 }
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
-  // Use the console to output diagnostic information (console.log) and errors (console.error)
-  // This line of code will only be executed once when your extension is activated
-  console.log('Congratulations, your extension "first-test" is now active!');
 
-  // The command has been defined in the package.json file
-  // Now provide the implementation of the command with registerCommand
-  // The commandId parameter must match the command field in package.json
-  let disposable = vscode.commands.registerCommand(
-    "first-test.helloWorld",
-    async () => {
-      // The code you place here will be executed every time your command is executed
-      // Display a message box to the user
-      vscode.window.showInformationMessage("BD fix begin!");
-      let updateStatus = await findJenkinsAndUpdate();
-      if (updateStatus) {
-        copyShellFile();
-      }
-      vscode.window.showInformationMessage("BD fix finish!");
+/**
+ *
+ * @returns Front end jenkins file content; if workspace not open or workspace is not a frontend project, return false
+ */
+async function getFrontendAppContent() {
+  const rootPath = vscode.workspace.rootPath;
+  if (!rootPath) {
+    vscode.window.showErrorMessage("Please open a workspace");
+    return false;
+  }
+
+  const filePath = vscode.Uri.file(rootPath + "/JenkinsFile");
+
+  // project non frontend, return directly
+  const jenkinsContent = (
+    await vscode.workspace.fs.readFile(filePath)
+  ).toString();
+  if (
+    !(
+      jenkinsContent.includes("gspPipelineNpmLibrary") ||
+      jenkinsContent.includes("gspPipelineNodejs")
+    )
+  ) {
+    return false;
+  }
+  return jenkinsContent;
+}
+
+async function removeDevDependencies(packageUri: vscode.Uri) {
+  const rootPath = vscode.workspace.rootPath;
+  const jenkinsContent = (
+    await vscode.workspace.fs.readFile(packageUri)
+  ).toString();
+  const tsFileReader = jenkinsContent.split("\n"); // parse array from content
+  let buildScriptFunc = 0;
+  let readFileWrite = "";
+  tsFileReader.forEach((lineContent) => {
+    if (buildScriptFunc > 0) {
+      lineContent.includes("}")
+        ? (buildScriptFunc--, (readFileWrite += lineContent))
+        : null;
+      return;
     }
+    if (lineContent.includes("devDependencies")) {
+      buildScriptFunc++;
+    }
+    readFileWrite += lineContent;
+  });
+  writeFileSync(rootPath + "\\package.json", readFileWrite);
+}
+
+async function backupPackage() {
+  let backupCheck = true;
+  const rootPath = vscode.workspace.rootPath;
+  const packageUri = vscode.Uri.file(rootPath + "/package.json");
+  const packageBakUri = vscode.Uri.file(rootPath + "/package.json.bak");
+  const packageLockUri = vscode.Uri.file(rootPath + "/package-lock.json");
+  const packageLockBakUri = vscode.Uri.file(
+    rootPath + "/package-lock.json.bak"
   );
 
-  context.subscriptions.push(disposable);
+  const isLockFileExist = existsSync(rootPath + "//package-lock.json");
+
+  if (isLockFileExist)
+    await vscode.workspace.fs.rename(packageLockUri, packageLockBakUri, {
+      overwrite: true,
+    });
+  await vscode.workspace.fs.copy(packageUri, packageBakUri, {
+    overwrite: true,
+  });
+
+  // remove dev dependency in new package json
+  await removeDevDependencies(packageUri);
+
+  const execShell = (cmd: string) =>
+    new Promise<string>((resolve, reject) => {
+      cp.exec(cmd, (err: any, out: any) => {
+        if (err) {
+          return reject("");
+        }
+        return resolve(out);
+      });
+    });
+
+  let npmResult: string = await execShell(
+    `cd ${vscode.workspace.rootPath} & npm install`
+  );
+
+  await vscode.workspace.fs.rename(packageBakUri, packageUri, {
+    overwrite: true,
+  });
+
+  if (isLockFileExist) {
+    await vscode.workspace.fs.rename(packageLockBakUri, packageLockUri, {
+      overwrite: true,
+    });
+  } else {
+    await vscode.workspace.fs.delete(packageLockUri);
+  }
+
+  if (npmResult && npmResult.includes("found 0 vulnerabilities")) {
+    npmResult = "";
+    backupCheck = true;
+  } else {
+    writeFileSync(rootPath + "\\bd-scan-result.txt", npmResult);
+    backupCheck = false;
+  }
+
+  return backupCheck;
+}
+
+export function activate(context: vscode.ExtensionContext) {
+  register(
+    context,
+    async () => {
+      vscode.window.showInformationMessage("BD fix begin!");
+      const jenkinsContent = await getFrontendAppContent();
+      if (!jenkinsContent) {
+        vscode.window.showErrorMessage("Please Open an ECS Front-end project");
+        return false;
+      }
+      let updateStatus = await updateJenkins(jenkinsContent);
+      if (updateStatus) {
+        updateStatus = await copyShellFile();
+      } else {
+        updateStatus = await checkScriptFile();
+      }
+      if (updateStatus) {
+        vscode.window.showInformationMessage(
+          "BD fix success! Please check in updated JenkinsFile and script/remove-devDependencies.sh"
+        );
+      } else {
+        vscode.window.showErrorMessage("BD fix failed!");
+      }
+    },
+    "first-test.bd-fix"
+  );
+
+  register(
+    context,
+    async () => {
+      vscode.window.showInformationMessage("BD scan begin in dependencies");
+      const jenkinsContent = await getFrontendAppContent();
+      if (!jenkinsContent) {
+        vscode.window.showErrorMessage("Please Open an ECS Front-end project");
+        return false;
+      }
+      const backupPackageResult = await backupPackage();
+      if (!backupPackageResult) {
+        vscode.window.showErrorMessage(
+          "BD scan error, check BD scan report named bd-scan-result.txt"
+        );
+        return false;
+      }
+      vscode.window.showInformationMessage(
+        "BD scan end! Congratulation, No BD issue in dependencies"
+      );
+    },
+    "first-test.bd-scan"
+  );
 }
 
 // this method is called when your extension is deactivated
 export function deactivate() {}
-function uriOrString(uriOrString: any, arg1: number) {
-  throw new Error("Function not implemented.");
-}

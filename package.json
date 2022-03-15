@@ -2,7 +2,7 @@
 	"name": "first-test",
 	"displayName": "first-test",
 	"description": "just for test extenstion workflow",
-	"version": "0.0.3",
+	"version": "0.0.5",
 	"publisher": "financialbdscan",
 	"engines": {
 		"vscode": "^1.56.0"
@@ -10,15 +10,24 @@
 	"categories": [
 		"Other"
 	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/gejun2008/bd-fix.git"
+	  },
 	"activationEvents": [
-		"onCommand:first-test.helloWorld"
+		"onCommand:first-test.bd-fix",
+		"onCommand:first-test.bd-scan"
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
 		"commands": [
 			{
-				"command": "first-test.helloWorld",
+				"command": "first-test.bd-fix",
 				"title": "BD Fix"
+			},
+			{
+				"command": "first-test.bd-scan",
+				"title": "BD Scan"
 			}
 		]
 	},
