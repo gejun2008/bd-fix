@@ -1,55 +1,17 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
-import { readFileSync, existsSync, writeFileSync } from "fs";
+import { existsSync, writeFileSync } from "fs";
 
 import * as cp from "child_process";
 
-function getDevDependenciesStr() {
-  let str = `#!/bin/bash 
-
-	dev_dependencies_module_list=()
-	function get_module_list_from_package(){ 
-		input="./package.json" 
-		local count=0 
-		while IFS= read -r line 
-		do 
-			if [[ ("$line" == *"devDependencies"*) && ("$line" != *"{}"*) ]]; then 
-				count=1 
-			else 
-				lint_content_trim="$line" 
-	
-				if [[ ( $lint_content_trim == *"}"* ) && ( $count > 0 ) ]]; then 
-					count=0 
-				fi 
-				
-				if [[ $count > 0 ]]; then 
-				
-					module_name=$(echo $lint_content_trim | grep -P '^"(?:@?\w+-?\/?\w+)+"' -o) 
-					if [ -n "$module_name" ]; then 
-						module_name=$(echo $module_name| cut -d'"' -f 2) 
-						dev_dependencies_module_list+=($module_name) 
-					fi 
-				fi 
-			fi 
-		done < "$input" 
-	} 
-
-	function npm_remove_dev_dependencies(){`;
-  str += '\n\t\tfor module_name in "${dev_dependencies_module_list[@]}"';
-  str += `	
-		do 
-			npm uninstall $module_name 
-		done
-	}
-	
-	get_module_list_from_package 
-	npm_remove_dev_dependencies
-	`;
-  return str;
-}
-
-function register(
+/**
+ * register command when install extension
+ * @param context: vscode context
+ * @param callback: async callback function
+ * @param commandName: command at commandlet
+ */
+function registerFunc(
   context: vscode.ExtensionContext,
   callback: (...args: any[]) => any,
   commandName: string
@@ -58,6 +20,11 @@ function register(
   context.subscriptions.push(disposable);
 }
 
+/**
+ * Convent string to Uint8Array
+ * @param str
+ * @returns Uint8Array
+ */
 function stringToUint8Array(str: string) {
   var arr = [];
   for (var i = 0, j = str.length; i < j; ++i) {
@@ -68,33 +35,37 @@ function stringToUint8Array(str: string) {
   return tmpUint8Array;
 }
 
-async function checkScriptFile() {
+/**
+ * Extension Context for some functionality such as copy internal file to workspace
+ * @param context
+ * @returns
+ */
+async function checkScriptFile(context: vscode.ExtensionContext): Promise<boolean> {
   const rootPath = vscode.workspace.rootPath;
-  const isScriptFileExist = existsSync(
-    rootPath + "//script//remove-devDependencies.sh"
-  );
+  const isScriptFileExist = existsSync(rootPath + "//script//remove-devDependencies.sh");
   if (isScriptFileExist) {
     return true;
   }
-  return copyShellFile();
+  return copyShellFile(context);
 }
 
-async function copyShellFile() {
+async function copyShellFile(context: vscode.ExtensionContext): Promise<boolean> {
   const spaceFolder = vscode.workspace.workspaceFolders;
   if (!spaceFolder) {
     vscode.window.showErrorMessage("Please open folder firstly");
   }
 
   const wsPath = spaceFolder ? spaceFolder[0].uri.fsPath : null; // gets the path of the first workspace folder
-  const filePath = vscode.Uri.file(
-    wsPath + "/script/remove-devDependencies.sh"
-  );
+  const filePath = vscode.Uri.file(wsPath + "/script/remove-devDependencies.sh");
 
-  const removeDepContent = getDevDependenciesStr();
-  await vscode.workspace.fs.writeFile(
-    filePath,
-    stringToUint8Array(removeDepContent)
+  const originSourcePathUri = vscode.Uri.joinPath(
+    context.extensionUri,
+    "./resource/remove-devDependencies.sh"
   );
+  await vscode.workspace.fs.copy(originSourcePathUri, filePath, {
+    overwrite: true,
+  });
+
   return true;
 }
 
@@ -121,14 +92,17 @@ async function updateJenkins(jenkinsContent: string) {
             chmod 777 ./script/remove-devDependencies.sh
             ./script/remove-devDependencies.sh'''
           }
-        )
         `;
-        readFileWrite = readFileWrite + buildArtifactsStr;
+        readFileWrite = readFileWrite + buildArtifactsStr + "\n" + ")";
       } else {
-        readFileWrite += lineContent;
+        readFileWrite += lineContent + "\n";
       }
     });
-    writeFileSync(rootPath + "\\JenkinsFile", readFileWrite);
+    vscode.Uri.file;
+    await vscode.workspace.fs.writeFile(
+      vscode.Uri.file(rootPath + "/JenkinsFile"),
+      stringToUint8Array(readFileWrite)
+    );
     return true;
   }
 
@@ -142,7 +116,7 @@ async function updateJenkins(jenkinsContent: string) {
         sh ''' chmod 777 ./script/remove-devDependencies.sh
         ./script/remove-devDependencies.sh'''
       `;
-      readFileWrite += removeDepStr + '\n';
+      readFileWrite += removeDepStr + "\n";
       buildScriptFunc--;
     }
 
@@ -160,12 +134,29 @@ async function updateJenkins(jenkinsContent: string) {
       lineContent.includes("}") ? buildScriptFunc-- : null;
     }
 
-    readFileWrite += lineContent;
+    readFileWrite += lineContent + "\n";
   });
 
   // write JenkinsFile
-  writeFileSync(rootPath + "\\JenkinsFile", readFileWrite);
+  await vscode.workspace.fs.writeFile(
+    vscode.Uri.file(rootPath + "/JenkinsFile"),
+    stringToUint8Array(readFileWrite)
+  );
   return true;
+}
+
+/**
+ * check package.json and package-lock.json file existence,
+ * @return true if existed both, otherwise false
+ */
+async function checkPackageAndLockFile() {
+  const rootPath = vscode.workspace.rootPath;
+  const packageFileExist = existsSync(rootPath + "//package.json");
+  const lockFileExist = existsSync(rootPath + "//package-lock.json");
+  if (packageFileExist && lockFileExist) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -196,32 +187,49 @@ async function getFrontendAppContent() {
   return jenkinsContent;
 }
 
+/**
+ * 
+ * @param packageUri 
+ * @returns 
+ */
 async function removeDevDependencies(packageUri: vscode.Uri) {
-  const rootPath = vscode.workspace.rootPath;
   const jenkinsContent = (
     await vscode.workspace.fs.readFile(packageUri)
   ).toString();
   const tsFileReader = jenkinsContent.split("\n"); // parse array from content
   let buildScriptFunc = 0;
-  let readFileWrite = "";
+  let uninstallPackages = "";
   tsFileReader.forEach((lineContent) => {
     if (buildScriptFunc > 0) {
-      lineContent.includes("}")
-        ? (buildScriptFunc--, (readFileWrite += lineContent))
-        : null;
+      if (lineContent.includes("}")) {
+        buildScriptFunc--;
+      } else {
+        const matchString = lineContent.match(/"(?:@?\w+-?\/?\w+)+"/g);
+        uninstallPackages += " " + (matchString ? matchString[0] : "");
+      }
       return;
     }
+
     if (lineContent.includes("devDependencies")) {
       buildScriptFunc++;
     }
-    readFileWrite += lineContent;
   });
-  writeFileSync(rootPath + "\\package.json", readFileWrite);
+  uninstallPackages += " ";
+  return uninstallPackages;
 }
 
-async function backupPackage() {
-  let backupCheck = true;
+/**
+ * The function is used to check dependencies BD issue. Only check vulnerability issue at dependencies
+ * @returns true if no BD issue, otherwise false
+ */
+async function checkDependenciesBDIssue(): Promise<boolean | undefined> {
   const rootPath = vscode.workspace.rootPath;
+
+  if (!rootPath) {
+    return;
+  }
+
+  let checkSuccess = true;
   const packageUri = vscode.Uri.file(rootPath + "/package.json");
   const packageBakUri = vscode.Uri.file(rootPath + "/package.json.bak");
   const packageLockUri = vscode.Uri.file(rootPath + "/package-lock.json");
@@ -229,58 +237,59 @@ async function backupPackage() {
     rootPath + "/package-lock.json.bak"
   );
 
-  const isLockFileExist = existsSync(rootPath + "//package-lock.json");
+  await vscode.workspace.fs.copy(packageLockUri, packageLockBakUri, {
+    overwrite: true,
+  });
 
-  if (isLockFileExist)
-    await vscode.workspace.fs.rename(packageLockUri, packageLockBakUri, {
-      overwrite: true,
-    });
   await vscode.workspace.fs.copy(packageUri, packageBakUri, {
     overwrite: true,
   });
 
-  // remove dev dependency in new package json
-  await removeDevDependencies(packageUri);
+  // get dev dependency packages
+  const uninstallPackages = await removeDevDependencies(packageUri);
 
+  const disk = rootPath.slice(0, 2);
   const execShell = (cmd: string) =>
     new Promise<string>((resolve, reject) => {
       cp.exec(cmd, (err: any, out: any) => {
+        if(out && out.includes('vulnerabilities')){
+          return resolve(out);
+        }
         if (err) {
           return reject("");
         }
-        return resolve(out);
       });
     });
 
   let npmResult: string = await execShell(
-    `cd ${vscode.workspace.rootPath} & npm install`
+    `${disk} && cd ${vscode.workspace.rootPath} && npm uninstall ${uninstallPackages} && npm audit`
   );
 
   await vscode.workspace.fs.rename(packageBakUri, packageUri, {
     overwrite: true,
   });
 
-  if (isLockFileExist) {
-    await vscode.workspace.fs.rename(packageLockBakUri, packageLockUri, {
-      overwrite: true,
-    });
-  } else {
-    await vscode.workspace.fs.delete(packageLockUri);
-  }
+  await vscode.workspace.fs.rename(packageLockBakUri, packageLockUri, {
+    overwrite: true,
+  });
 
   if (npmResult && npmResult.includes("found 0 vulnerabilities")) {
     npmResult = "";
-    backupCheck = true;
+    checkSuccess = true;
   } else {
-    writeFileSync(rootPath + "\\bd-scan-result.txt", npmResult);
-    backupCheck = false;
+    writeFileSync(rootPath + "\\bd-scan-report.txt", npmResult);
+    checkSuccess = false;
   }
 
-  return backupCheck;
+  return checkSuccess;
 }
 
+/**
+ * Activate extension to register command
+ * @param context 
+ */
 export function activate(context: vscode.ExtensionContext) {
-  register(
+  registerFunc(
     context,
     async () => {
       vscode.window.showInformationMessage("BD fix begin!");
@@ -291,9 +300,9 @@ export function activate(context: vscode.ExtensionContext) {
       }
       let updateStatus = await updateJenkins(jenkinsContent);
       if (updateStatus) {
-        updateStatus = await copyShellFile();
+        updateStatus = await copyShellFile(context);
       } else {
-        updateStatus = await checkScriptFile();
+        updateStatus = await checkScriptFile(context);
       }
       if (updateStatus) {
         vscode.window.showInformationMessage(
@@ -306,24 +315,45 @@ export function activate(context: vscode.ExtensionContext) {
     "first-test.bd-fix"
   );
 
-  register(
+  registerFunc(
     context,
     async () => {
-      vscode.window.showInformationMessage("BD scan begin in dependencies");
       const jenkinsContent = await getFrontendAppContent();
       if (!jenkinsContent) {
         vscode.window.showErrorMessage("Please Open an ECS Front-end project");
         return false;
       }
-      const backupPackageResult = await backupPackage();
-      if (!backupPackageResult) {
+
+      const packageFileAndLockFile = await checkPackageAndLockFile();
+      if (!packageFileAndLockFile) {
         vscode.window.showErrorMessage(
-          "BD scan error, check BD scan report named bd-scan-result.txt"
+          "Please make sure this project exist package.json and package-lock.json"
         );
         return false;
       }
-      vscode.window.showInformationMessage(
-        "BD scan end! Congratulation, No BD issue in dependencies"
+
+      await vscode.window.withProgress(
+        {
+          cancellable: false,
+          location: vscode.ProgressLocation.Notification,
+          title: "BD Scan",
+        },
+        async (progress) => {
+          progress.report({
+            message: `Scan Dependencies packages, Please wait...`,
+          });
+
+          const backupPackageResult = await checkDependenciesBDIssue();
+          if (!backupPackageResult) {
+            vscode.window.showErrorMessage(
+              "BD scan end! Dependencies exist BD issue, check bd-scan-report.txt in workspace for more information"
+            );
+            return false;
+          }
+          vscode.window.showInformationMessage(
+            "BD scan end! Congratulation, No BD issue in dependencies"
+          );
+        }
       );
     },
     "first-test.bd-scan"
@@ -331,4 +361,4 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 // this method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() { }

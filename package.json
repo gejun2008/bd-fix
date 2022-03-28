@@ -2,10 +2,10 @@
 	"name": "first-test",
 	"displayName": "first-test",
 	"description": "just for test extenstion workflow",
-	"version": "0.0.5",
+	"version": "0.0.10",
 	"publisher": "financialbdscan",
 	"engines": {
-		"vscode": "^1.56.0"
+		"vscode": "^1.50.0"
 	},
 	"categories": [
 		"Other"
@@ -13,7 +13,7 @@
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/gejun2008/bd-fix.git"
-	  },
+	},
 	"activationEvents": [
 		"onCommand:first-test.bd-fix",
 		"onCommand:first-test.bd-scan"
@@ -43,7 +43,7 @@
 		"test": "node ./out/test/runTest.js"
 	},
 	"devDependencies": {
-		"@types/vscode": "^1.56.0",
+		"@types/vscode": "^1.50.0",
 		"@types/glob": "^7.2.0",
 		"@types/mocha": "^9.1.0",
 		"@types/node": "14.x",
