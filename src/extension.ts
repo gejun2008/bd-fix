@@ -281,6 +281,10 @@ async function checkDependenciesBDIssue(): Promise<boolean | undefined> {
     checkSuccess = false;
   }
 
+  await execShell(
+    `${disk} && cd ${vscode.workspace.rootPath} && npm install`
+  );
+
   return checkSuccess;
 }
 
