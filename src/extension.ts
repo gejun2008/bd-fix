@@ -188,37 +188,6 @@ async function getFrontendAppContent() {
 }
 
 /**
- * 
- * @param packageUri 
- * @returns 
- */
-async function removeDevDependencies(packageUri: vscode.Uri) {
-  const jenkinsContent = (
-    await vscode.workspace.fs.readFile(packageUri)
-  ).toString();
-  const tsFileReader = jenkinsContent.split("\n"); // parse array from content
-  let buildScriptFunc = 0;
-  let uninstallPackages = "";
-  tsFileReader.forEach((lineContent) => {
-    if (buildScriptFunc > 0) {
-      if (lineContent.includes("}")) {
-        buildScriptFunc--;
-      } else {
-        const matchString = lineContent.match(/"(?:@?\w+-?\/?\w+)+"/g);
-        uninstallPackages += " " + (matchString ? matchString[0] : "");
-      }
-      return;
-    }
-
-    if (lineContent.includes("devDependencies")) {
-      buildScriptFunc++;
-    }
-  });
-  uninstallPackages += " ";
-  return uninstallPackages;
-}
-
-/**
  * The function is used to check dependencies BD issue. Only check vulnerability issue at dependencies
  * @returns true if no BD issue, otherwise false
  */
@@ -230,29 +199,12 @@ async function checkDependenciesBDIssue(): Promise<boolean | undefined> {
   }
 
   let checkSuccess = true;
-  const packageUri = vscode.Uri.file(rootPath + "/package.json");
-  const packageBakUri = vscode.Uri.file(rootPath + "/package.json.bak");
-  const packageLockUri = vscode.Uri.file(rootPath + "/package-lock.json");
-  const packageLockBakUri = vscode.Uri.file(
-    rootPath + "/package-lock.json.bak"
-  );
-
-  await vscode.workspace.fs.copy(packageLockUri, packageLockBakUri, {
-    overwrite: true,
-  });
-
-  await vscode.workspace.fs.copy(packageUri, packageBakUri, {
-    overwrite: true,
-  });
-
-  // get dev dependency packages
-  const uninstallPackages = await removeDevDependencies(packageUri);
 
   const disk = rootPath.slice(0, 2);
   const execShell = (cmd: string) =>
     new Promise<string>((resolve, reject) => {
       cp.exec(cmd, (err: any, out: any) => {
-        if(out && out.includes('vulnerabilities')){
+        if (out) {
           return resolve(out);
         }
         if (err) {
@@ -262,28 +214,19 @@ async function checkDependenciesBDIssue(): Promise<boolean | undefined> {
     });
 
   let npmResult: string = await execShell(
-    `${disk} && cd ${vscode.workspace.rootPath} && npm uninstall ${uninstallPackages} && npm audit`
+    `${disk} && cd ${vscode.workspace.rootPath} && npm audit --production`
   );
-
-  await vscode.workspace.fs.rename(packageBakUri, packageUri, {
-    overwrite: true,
-  });
-
-  await vscode.workspace.fs.rename(packageLockBakUri, packageLockUri, {
-    overwrite: true,
-  });
 
   if (npmResult && npmResult.includes("found 0 vulnerabilities")) {
     npmResult = "";
     checkSuccess = true;
   } else {
-    writeFileSync(rootPath + "\\bd-scan-report.txt", npmResult);
+    await vscode.workspace.fs.writeFile(
+      vscode.Uri.file(rootPath + "/bd-scan-report.txt"),
+      stringToUint8Array(npmResult)
+    );
     checkSuccess = false;
   }
-
-  await execShell(
-    `${disk} && cd ${vscode.workspace.rootPath} && npm install`
-  );
 
   return checkSuccess;
 }
@@ -336,28 +279,15 @@ export function activate(context: vscode.ExtensionContext) {
         return false;
       }
 
-      await vscode.window.withProgress(
-        {
-          cancellable: false,
-          location: vscode.ProgressLocation.Notification,
-          title: "BD Scan",
-        },
-        async (progress) => {
-          progress.report({
-            message: `Scan Dependencies packages, Please wait...`,
-          });
-
-          const backupPackageResult = await checkDependenciesBDIssue();
-          if (!backupPackageResult) {
-            vscode.window.showErrorMessage(
-              "BD scan end! Dependencies exist BD issue, check bd-scan-report.txt in workspace for more information"
-            );
-            return false;
-          }
-          vscode.window.showInformationMessage(
-            "BD scan end! Congratulation, No BD issue in dependencies"
-          );
-        }
+      const backupPackageResult = await checkDependenciesBDIssue();
+      if (!backupPackageResult) {
+        vscode.window.showErrorMessage(
+          "BD scan end! Dependencies exist BD issue, check bd-scan-report.txt in workspace for more information"
+        );
+        return false;
+      }
+      vscode.window.showInformationMessage(
+        "BD scan end! Congratulation, No BD issue in dependencies"
       );
     },
     "first-test.bd-scan"
