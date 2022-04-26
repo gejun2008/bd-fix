@@ -265,30 +265,36 @@ export function activate(context: vscode.ExtensionContext) {
   registerFunc(
     context,
     async () => {
-      const jenkinsContent = await getFrontendAppContent();
-      if (!jenkinsContent) {
-        vscode.window.showErrorMessage("Please Open an ECS Front-end project");
-        return false;
-      }
+      await vscode.window.withProgress(
+        {
+          cancellable: true,
+          location: vscode.ProgressLocation.Notification,
+          title: "BD scan --dependencies",
+        },
+        async (progress) => {
+          progress.report({
+            message: `Scan Dependencies packages, Please wait...`,
+          });
 
-      const packageFileAndLockFile = await checkPackageAndLockFile();
-      if (!packageFileAndLockFile) {
-        vscode.window.showErrorMessage(
-          "Please make sure this project exist package.json and package-lock.json"
-        );
-        return false;
-      }
+          const packageFileAndLockFile = await checkPackageAndLockFile();
+          if (!packageFileAndLockFile) {
+            vscode.window.showErrorMessage(
+              "Please make sure this project exist package.json and package-lock.json"
+            );
+            return false;
+          }
 
-      const backupPackageResult = await checkDependenciesBDIssue();
-      if (!backupPackageResult) {
-        vscode.window.showErrorMessage(
-          "BD scan end! Dependencies exist BD issue, check bd-scan-report.txt in workspace for more information"
-        );
-        return false;
-      }
-      vscode.window.showInformationMessage(
-        "BD scan end! Congratulation, No BD issue in dependencies"
-      );
+          const backupPackageResult = await checkDependenciesBDIssue();
+          if (!backupPackageResult) {
+            vscode.window.showErrorMessage(
+              "BD scan end! Dependencies exist BD issue, check bd-scan-report.txt in workspace for more information"
+            );
+            return false;
+          }
+          vscode.window.showInformationMessage(
+            "BD scan end! Congratulation, No BD issue in dependencies"
+          );
+        })
     },
     "first-test.bd-scan"
   );
