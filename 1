@@ -1,5 +1,2 @@
-After conducting a thorough examination, we have identified a date-related problem. We plan to address this issue in the next release scheduled for July 21st. Once the fix is implemented, we kindly request your assistance in re-verifying the corrected data.
-
-
-
-
+const serverTimeZone = 'America/New_York'; // EST timezone
+const convertedDate = moment.tz(formattedDate, 'YYYY-MM-DD HH:mm:ss', 'Asia/Shanghai').tz(serverTimeZone).format('YYYY-MM-DD HH:mm:ss');
