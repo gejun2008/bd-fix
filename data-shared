@@ -1,0 +1,23 @@
+// Assuming you have a date formatted in EST
+const estDateString = '2023-07-13 10:30:00';
+
+// Convert EST to UTC
+const estDate = new Date(estDateString + ' EST');
+const utcDate = estDate.toLocaleString('en-US', { timeZone: 'UTC' });
+console.log('UTC:', utcDate);
+
+// Convert EST to Eastern Standard Time (EST)
+const estFormatted = estDate.toLocaleString('en-US', { timeZone: 'America/New_York' });
+console.log('EST:', estFormatted);
+
+// Convert EST to Asia/Shanghai
+const shanghaiFormatted = estDate.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' });
+console.log('Asia/Shanghai:', shanghaiFormatted);
+
+// Convert EST to Asia/Tokyo
+const tokyoFormatted = estDate.toLocaleString('en-US', { timeZone: 'Asia/Tokyo' });
+console.log('Asia/Tokyo:', tokyoFormatted);
+
+// Convert EST to London
+const londonFormatted = estDate.toLocaleString('en-US', { timeZone: 'Europe/London' });
+console.log('London:', londonFormatted);
