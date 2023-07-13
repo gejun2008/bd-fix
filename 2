@@ -1,0 +1,24 @@
+const moment = require('moment-timezone');
+
+// Assuming you have a date formatted in EST
+const estDateString = '2023-07-13 10:30:00';
+
+// Convert EST to UTC
+const estDateTime = moment.tz(estDateString, 'YYYY-MM-DD HH:mm:ss', 'America/New_York');
+const utcDateTime = estDateTime.clone().utc();
+console.log('UTC:', utcDateTime.format('YYYY-MM-DD HH:mm:ss'));
+
+// Convert EST to Eastern Standard Time (EST)
+console.log('EST:', estDateTime.format('YYYY-MM-DD HH:mm:ss'));
+
+// Convert EST to Asia/Shanghai
+const shanghaiDateTime = estDateTime.clone().tz('Asia/Shanghai');
+console.log('Asia/Shanghai:', shanghaiDateTime.format('YYYY-MM-DD HH:mm:ss'));
+
+// Convert EST to Asia/Tokyo
+const tokyoDateTime = estDateTime.clone().tz('Asia/Tokyo');
+console.log('Asia/Tokyo:', tokyoDateTime.format('YYYY-MM-DD HH:mm:ss'));
+
+// Convert EST to London
+const londonDateTime = estDateTime.clone().tz('Europe/London');
+console.log('London:', londonDateTime.format('YYYY-MM-DD HH:mm:ss'));
