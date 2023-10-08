@@ -1,0 +1,4 @@
+1. 功能多样性，发送正常banner消息6个app，发送紧急消息1个，每日实时更新modal消息1个，每个release发送mail的release note是1个。
+2. 易操作性，onbroad的流程耗时。根据不完全的统计数据有10个项目onboard过，包括低环境下面。得益于home website的指导，长一点2个小时，短一点的5分钟。平均时长30分钟。
+3. 使用频率， 使用频率，以PROD上的app为例。cp每个release 都使用，OC 最近2个release都使用。sparta用来通知紧急消息。使用2个月一次。
+4. 跨平台性/通用性，在angular上10个，react onbroad 1个。 web browser 9个，icg desktop 1个，web .net 1个。这个数据说明notification的通用性。
