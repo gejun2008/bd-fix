@@ -1,2 +1,26 @@
-const serverTimeZone = 'America/New_York'; // EST timezone
-const convertedDate = moment.tz(formattedDate, 'YYYY-MM-DD HH:mm:ss', 'Asia/Shanghai').tz(serverTimeZone).format('YYYY-MM-DD HH:mm:ss');
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Open Outlook with HTML Content</title>
+</head>
+<body>
+    <h1>Email template</h1>
+    <p>This is the body of the email. You can include HTML tags here:</p>
+    <a href="https://example.com" target="_blank">Link to example.com</a>
+    <div>
+        <img src="https://example.com/image.jpg" alt="Example Image">
+    </div>
+    <video controls>
+        <source src="https://example.com/video.mp4" type="video/mp4">
+    </video>
+    <button onclick="openOutlook()">Open Outlook</button>
+
+    <script>
+        function openOutlook() {
+            var bodyContent = encodeURIComponent(document.documentElement.innerHTML);
+            var mailtoLink = "mailto:recipient@example.com?subject=Hello%20from%20JavaScript&body=" + bodyContent;
+            window.location.href = mailtoLink;
+        }
+    </script>
+</body>
+</html>
